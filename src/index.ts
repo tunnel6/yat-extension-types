@@ -186,7 +186,7 @@ export interface AppDefinition {
   /** 基本信息个性化组件（作为补充显示在标准信息之后） */
   DetailInfo?: any
   /** 标签页定义列表 */
-  tabs: AppTab[]
+  detailTabs?: AppTab[]
   /** 操作按钮定义列表 */
   actions: AppAction[]
   /** App 生命周期钩子 */
