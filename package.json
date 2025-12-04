@@ -1,5 +1,5 @@
 {
-  "name": "@tunnel6/extension-types",
+  "name": "@hilow/extension-types",
   "version": "1.0.0",
   "description": "YAT Extension Type Definitions - Shared types for YAT extension development",
   "main": "dist/index.js",
