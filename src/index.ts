@@ -51,12 +51,6 @@ export interface Tunnel {
     remoteUrl?: string
     metadata?: Record<string, any>
   }>
-  /** 本地端口（兼容旧扩展，单通道场景） */
-  localPort?: number
-  /** 远程端口（兼容旧扩展，单通道场景） */
-  remotePort?: number
-  /** 远程 URL（兼容旧扩展，单通道场景） */
-  remoteUrl?: string
   /** 关联的 App ID */
   appId?: string
   /** 创建时间 */
@@ -291,6 +285,7 @@ export interface AppDefinition {
   id: string
   /** App 名称 */
   name: string
+  short: string
   /** App i18n 文案资源（必填：zh-CN / en） */
   i18n: AppI18nBundle
   /** 配置表单组件（用于创建隧道时填写配置） */
@@ -317,6 +312,8 @@ export interface ExtensionMetadata {
   id: string
   /** 扩展名称 */
   name: string
+  /** 简称 */
+  short: string
   /** 扩展版本 */
   version: string
   /** 扩展描述 */
