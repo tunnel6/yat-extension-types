@@ -10,22 +10,52 @@
 // ============================================================================
 
 /**
+ * 通道协议
+ */
+export type ChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
+
+/**
+ * Tunnel 端点定义
+ */
+export interface TunnelEndpoint {
+  host?: string
+  port?: number
+  address?: string
+}
+
+/**
  * 隧道信息
+ * 说明：Tunnel 是扩展侧的“完整信道定义聚合”。
  */
 export interface Tunnel {
   /** 隧道 ID */
   id: string
   /** 隧道名称 */
   name: string
-  /** 隧道类型 (1: HTTP, 2: HTTPS, 3: TCP, 4: UDP, 5: WireGuard) */
-  type: number
   /** 隧道状态 */
   status: 'active' | 'stopped' | 'inactive' | string
-  /** 本地端口 */
+  /** 协议（推荐使用） */
+  protocol?: ChannelProtocol | string
+  /** 本地端点（完整隧道定义） */
+  localEndpoint?: TunnelEndpoint
+  /** 远端端点（完整隧道定义） */
+  remoteEndpoint?: TunnelEndpoint
+  /** 通信链路定义（支持多协议并行） */
+  channels?: Array<{
+    key: string
+    protocol: ChannelProtocol
+    channelId?: string
+    status?: 'active' | 'inactive' | 'stopped' | string
+    local?: TunnelEndpoint
+    remote?: TunnelEndpoint
+    remoteUrl?: string
+    metadata?: Record<string, any>
+  }>
+  /** 本地端口（兼容旧扩展，单通道场景） */
   localPort?: number
-  /** 远程端口 */
+  /** 远程端口（兼容旧扩展，单通道场景） */
   remotePort?: number
-  /** 远程 URL */
+  /** 远程 URL（兼容旧扩展，单通道场景） */
   remoteUrl?: string
   /** 关联的 App ID */
   appId?: string
@@ -33,6 +63,70 @@ export interface Tunnel {
   createdAt?: string
   /** 额外属性 */
   [key: string]: any
+}
+
+// ============================================================================
+// 扩展运行时通道 SDK 契约（Host API v1）
+// ============================================================================
+
+/**
+ * 扩展运行时 API 统一返回结构
+ */
+export interface HostResult<T> {
+  success: boolean
+  data?: T
+  message?: string
+  error?: string
+}
+
+/**
+ * 通道启动规格（扩展侧输入）
+ */
+export interface ChannelSpec {
+  key: string
+  protocol: ChannelProtocol
+  localHost?: string
+  localPort: number
+  remotePort?: number
+  subdomain?: string
+  aliasDomain?: string
+  bufferSize?: number
+}
+
+/**
+ * 启动多通道输入参数
+ */
+export interface StartChannelsInput {
+  channels: ChannelSpec[]
+  reconnect?: boolean
+  mode?: 'all-or-nothing' | 'best-effort'
+}
+
+/**
+ * 停止通道输入参数
+ */
+export interface StopChannelsInput {
+  keys?: string[]
+  reason?: string
+}
+
+/**
+ * 通道运行时 SDK（扩展可调用）
+ * 注意：这里不暴露 edge online/offline 等管理能力。
+ */
+export interface ExtensionChannelRuntimeApi {
+  startChannels(input: StartChannelsInput): Promise<HostResult<Tunnel>>
+  stopChannels(input?: StopChannelsInput): Promise<HostResult<Tunnel>>
+  getTunnel(): Promise<HostResult<Tunnel>>
+  isEdgeConnected(): Promise<HostResult<boolean>>
+}
+
+/**
+ * 宿主注入给扩展的 API 入口
+ */
+export interface ExtensionHostApi {
+  version: '1'
+  channel: ExtensionChannelRuntimeApi
 }
 
 // ============================================================================
@@ -79,6 +173,8 @@ export interface ExtensionComponentAdapter {
 export interface AppHookContext {
   /** 隧道信息 */
   tunnel: Tunnel
+  /** 宿主提供的受限 API（可选，为兼容旧扩展） */
+  host?: ExtensionHostApi
   /** 触发事件（可选，用于通知宿主） */
   emit?: (event: string, ...args: any[]) => void
   /** 宿主应用提供的 i18n 翻译函数 */
@@ -89,6 +185,20 @@ export interface AppHookContext {
   isDark?: boolean
   /** 主题模式设置 */
   themeMode?: 'light' | 'dark' | 'system'
+}
+
+/**
+ * App i18n 文案映射
+ */
+export type AppI18nMessages = Record<string, any>
+
+/**
+ * App i18n 资源包
+ * 说明：宿主安装器要求必须包含 `zh-CN` 与 `en` 两套文案。
+ */
+export interface AppI18nBundle {
+  'zh-CN': AppI18nMessages
+  en: AppI18nMessages
 }
 
 /**
@@ -181,6 +291,8 @@ export interface AppDefinition {
   id: string
   /** App 名称 */
   name: string
+  /** App i18n 文案资源（必填：zh-CN / en） */
+  i18n: AppI18nBundle
   /** 配置表单组件（用于创建隧道时填写配置） */
   ConfigForm?: any
   /** 基本信息个性化组件（作为补充显示在标准信息之后） */
@@ -219,6 +331,8 @@ export interface ExtensionMetadata {
   minHostVersion?: string
   /** 依赖的其他扩展 */
   dependencies?: Record<string, string>
+  /** 扩展使用的 Host API 版本，默认可视为 v1 */
+  hostApiVersion?: '1'
 }
 
 /**
