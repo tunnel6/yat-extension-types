@@ -15,6 +15,26 @@
 export type ChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
 
 /**
+ * Tunnel 参与设备角色
+ */
+export type TunnelParticipantRole = 'publisher' | 'consumer' | 'controller'
+
+/**
+ * Tunnel 参与设备状态
+ */
+export type TunnelParticipantState = 'online' | 'offline' | 'idle' | string
+
+/**
+ * Tunnel 链路传输类型
+ */
+export type TunnelTransport = 'p2p' | 'relay' | 'wireguard'
+
+/**
+ * Tunnel 通道状态
+ */
+export type TunnelChannelState = 'active' | 'inactive' | 'stopped' | 'failed' | 'negotiating' | string
+
+/**
  * Tunnel 端点定义
  */
 export interface TunnelEndpoint {
@@ -24,38 +44,103 @@ export interface TunnelEndpoint {
 }
 
 /**
- * 隧道信息
- * 说明：Tunnel 是扩展侧的“完整信道定义聚合”。
+ * Tunnel 运行链路定义
+ */
+export interface TunnelRoute {
+  id: string
+  transport: TunnelTransport
+  state?: TunnelChannelState
+  local?: TunnelEndpoint
+  remote?: TunnelEndpoint
+  remoteUrl?: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * Tunnel 通道绑定定义（业务意图）
+ */
+export interface TunnelChannelBinding {
+  localHost?: string
+  localPort: number
+  remotePort?: number
+}
+
+/**
+ * Tunnel 通道定义
+ */
+export interface TunnelChannelDefinition {
+  key: string
+  protocol: ChannelProtocol
+  channelId?: string
+  status?: TunnelChannelState
+  binding: TunnelChannelBinding
+  selectedRouteId?: string
+  routes: TunnelRoute[]
+  metadata?: Record<string, any>
+}
+
+/**
+ * Tunnel 参与者定义
+ */
+export interface TunnelParticipant {
+  deviceId: string
+  role: TunnelParticipantRole
+  state?: TunnelParticipantState
+  capabilities?: string[]
+  lastSeenAt?: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * Tunnel 会话定义
+ */
+export interface TunnelSession {
+  id: string
+  state?: TunnelChannelState
+  channelKeys?: string[]
+  transport?: TunnelTransport
+  publisherDeviceId?: string
+  consumerDeviceId?: string
+  controllerDeviceId?: string
+  startedAt?: string
+  updatedAt?: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * Tunnel 传输策略
+ */
+export interface TunnelTransportPolicy {
+  preferred?: TunnelTransport[]
+  allowRelayFallback?: boolean
+  requireDirect?: boolean
+}
+
+/**
+ * Tunnel 意图定义
+ */
+export interface TunnelIntent {
+  protocol?: ChannelProtocol | string
+  config?: Record<string, any>
+  transportPolicy?: TunnelTransportPolicy
+  metadata?: Record<string, any>
+}
+
+/**
+ * 隧道信息（意图 + 参与者 + 运行态）
  */
 export interface Tunnel {
-  /** 隧道 ID */
   id: string
-  /** 隧道名称 */
   name: string
-  /** 隧道状态 */
-  status: 'active' | 'stopped' | 'inactive' | string
-  /** 协议（推荐使用） */
-  protocol?: ChannelProtocol | string
-  /** 本地端点（完整隧道定义） */
-  localEndpoint?: TunnelEndpoint
-  /** 远端端点（完整隧道定义） */
-  remoteEndpoint?: TunnelEndpoint
-  /** 通信链路定义（支持多协议并行） */
-  channels?: Array<{
-    key: string
-    protocol: ChannelProtocol
-    channelId?: string
-    status?: 'active' | 'inactive' | 'stopped' | string
-    local?: TunnelEndpoint
-    remote?: TunnelEndpoint
-    remoteUrl?: string
-    metadata?: Record<string, any>
-  }>
-  /** 关联的 App ID */
+  status: TunnelChannelState
   appId?: string
-  /** 创建时间 */
+  intent: TunnelIntent
+  participants: TunnelParticipant[]
+  channels: TunnelChannelDefinition[]
+  sessions?: TunnelSession[]
   createdAt?: string
-  /** 额外属性 */
+  updatedAt?: string
+  metadata?: Record<string, any>
   [key: string]: any
 }
 
@@ -85,6 +170,8 @@ export interface ChannelSpec {
   subdomain?: string
   aliasDomain?: string
   bufferSize?: number
+  transport?: TunnelTransport
+  metadata?: Record<string, any>
 }
 
 /**
@@ -94,6 +181,9 @@ export interface StartChannelsInput {
   channels: ChannelSpec[]
   reconnect?: boolean
   mode?: 'all-or-nothing' | 'best-effort'
+  actorDeviceId?: string
+  actorRole?: TunnelParticipantRole
+  sessionId?: string
 }
 
 /**
@@ -102,6 +192,8 @@ export interface StartChannelsInput {
 export interface StopChannelsInput {
   keys?: string[]
   reason?: string
+  actorDeviceId?: string
+  sessionId?: string
 }
 
 /**
