@@ -15,6 +15,11 @@
 export type ChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
 
 /**
+ * 通道底层传输实现（当前固定为 mTLS over TCP）
+ */
+export type TunnelChannelTransport = 'mtls-tcp'
+
+/**
  * Tunnel 参与设备角色
  */
 export type TunnelParticipantRole = 'publisher' | 'consumer' | 'controller'
@@ -66,14 +71,33 @@ export interface TunnelChannelBinding {
 }
 
 /**
+ * Tunnel 转发规则定义（协议与端口绑定）
+ */
+export interface TunnelForwardRule {
+  key: string
+  protocol: ChannelProtocol
+  binding: TunnelChannelBinding
+  channelId?: string
+  metadata?: Record<string, any>
+}
+
+/**
  * Tunnel 通道定义
  */
 export interface TunnelChannelDefinition {
   key: string
-  protocol: ChannelProtocol
+  transport?: TunnelChannelTransport
+  rules: TunnelForwardRule[]
+  /**
+   * 兼容投影视图字段（一般取主规则）
+   */
+  protocol?: ChannelProtocol
   channelId?: string
   status?: TunnelChannelState
-  binding: TunnelChannelBinding
+  /**
+   * 兼容投影视图字段（一般取主规则绑定）
+   */
+  binding?: TunnelChannelBinding
   selectedRouteId?: string
   routes: TunnelRoute[]
   metadata?: Record<string, any>
@@ -159,9 +183,9 @@ export interface HostResult<T> {
 }
 
 /**
- * 通道启动规格（扩展侧输入）
+ * 通道启动规则（扩展侧输入）
  */
-export interface ChannelSpec {
+export interface ChannelForwardSpec {
   key: string
   protocol: ChannelProtocol
   localHost?: string
@@ -171,6 +195,16 @@ export interface ChannelSpec {
   aliasDomain?: string
   bufferSize?: number
   transport?: TunnelTransport
+  metadata?: Record<string, any>
+}
+
+/**
+ * 通道启动规格（扩展侧输入）
+ * key 表示逻辑 channel，rules 表示该 channel 下的多协议/多端口转发规则。
+ */
+export interface ChannelSpec {
+  key: string
+  rules: ChannelForwardSpec[]
   metadata?: Record<string, any>
 }
 
