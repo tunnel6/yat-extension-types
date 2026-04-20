@@ -89,6 +89,10 @@ export interface TunnelChannelDefinition {
   transport?: TunnelChannelTransport
   rules: TunnelForwardRule[]
   /**
+   * 首选规则的key（用于生成主要的远程访问地址）
+   */
+  preferredRuleKey?: string
+  /**
    * 兼容投影视图字段（一般取主规则）
    */
   protocol?: ChannelProtocol
@@ -147,6 +151,12 @@ export interface TunnelIntent {
   protocol?: ChannelProtocol | string
   config?: Record<string, any>
   transportPolicy?: TunnelTransportPolicy
+  /**
+   * 远程访问地址的URL scheme（用于生成remoteUrl）
+   * 例如：'vnc' for ARD (兼容VNC), 'rdp' for RDP, 'ssh' for SSH
+   * 如果不指定，默认使用protocol作为scheme
+   */
+  remoteUrlScheme?: string
   metadata?: Record<string, any>
 }
 
