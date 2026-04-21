@@ -33,6 +33,94 @@ export type TunnelParticipantState = 'online' | 'offline' | 'idle' | string
  * Tunnel 链路传输类型
  */
 export type TunnelTransport = 'p2p' | 'relay' | 'wireguard'
+export type RemoteAddressScheme =
+  | 'http'
+  | 'https'
+  | 'tcp'
+  | 'udp'
+  | 'wireguard'
+  | 'vnc'
+  | 'rdp'
+  | 'ssh'
+  | string
+
+/**
+ * 远程地址展示格式
+ * - `url`: 标准 URL（例如 https://domain:port / vnc://host:port）
+ * - `host-port`: 纯端点格式（例如 host:port）
+ */
+export type RemoteAddressFormat = 'url' | 'host-port'
+
+export type TunnelRemoteAddressSource =
+  | 'alias-domain'
+  | 'sub-custom-domain'
+  | 'sub-assigned-domain'
+  | 'legacy-remote'
+
+export type TunnelCustomDomainCnameState = 'none' | 'valid' | 'invalid' | 'unknown'
+
+export interface TunnelRemoteAddressLine {
+  key: string
+  source: TunnelRemoteAddressSource
+  scheme: RemoteAddressScheme
+  domain: string
+  url: string
+}
+
+export interface TunnelRemoteAddressHint {
+  level: 'info' | 'warning'
+  message: string
+}
+
+export interface TunnelRemoteAddressResolution {
+  lines: TunnelRemoteAddressLine[]
+  bestUrl: string
+  cnameState?: TunnelCustomDomainCnameState
+  hints?: TunnelRemoteAddressHint[]
+  domains?: {
+    aliasDomain?: string
+    subdomain?: string
+    subCustomDomain?: string
+    subAssignedDomain?: string
+  }
+}
+
+export interface AppRemoteAddressResolveContext {
+  tunnel: Tunnel
+  edge?: Record<string, any> | null
+}
+
+export type AppRemoteAddressResolver = (
+  context: AppRemoteAddressResolveContext
+) => TunnelRemoteAddressResolution
+
+/**
+ * App 远程地址声明（由 app 自身定义）
+ */
+export interface AppRemoteAddressProfile {
+  /**
+   * 推荐展示的远程地址 scheme，例如 vnc/ssh/tcp
+   */
+  scheme?: RemoteAddressScheme
+  /**
+   * 推荐展示的远程地址格式
+   * 未指定时默认 `url`
+   */
+  format?: RemoteAddressFormat
+  /**
+   * 生成推荐地址时优先匹配的规则 key（例如 ARD 的 ard-vnc-tcp-5900）
+   */
+  preferredRuleKey?: string
+  /**
+   * 生成推荐地址时优先匹配的本地端口（例如 VNC 5900）
+   */
+  preferredLocalPort?: number
+  /**
+   * 由 App/Extension 自身定义远程地址解析逻辑。
+   * Host 仅负责调用与结果校验，不再做统一地址决策。
+   */
+  resolve?: AppRemoteAddressResolver
+}
 
 /**
  * Tunnel 通道状态
@@ -73,12 +161,24 @@ export interface TunnelChannelBinding {
 /**
  * Tunnel 转发规则定义（协议与端口绑定）
  */
+export interface ChannelForwardMetadata {
+  /**
+   * 是否在 TCP 连接 accept 后立即触发远端拨号。
+   * 用于 VNC/RFB 这类 server-first 协议，避免客户端尚未发包时握手被阻塞。
+   */
+  eagerConnectRemote?: boolean
+  [key: string]: any
+}
+
+/**
+ * Tunnel 转发规则定义（协议与端口绑定）
+ */
 export interface TunnelForwardRule {
   key: string
   protocol: ChannelProtocol
   binding: TunnelChannelBinding
   channelId?: string
-  metadata?: Record<string, any>
+  metadata?: ChannelForwardMetadata
 }
 
 /**
@@ -144,6 +244,50 @@ export interface TunnelTransportPolicy {
   requireDirect?: boolean
 }
 
+export type LocalBridgeProtocol = 'tcp' | 'udp'
+
+export interface TunnelLocalBridgeMapping {
+  /**
+   * 映射项唯一标识（建议与 rule key 对齐）
+   */
+  key: string
+  /**
+   * 本地监听协议
+   */
+  protocol: LocalBridgeProtocol
+  /**
+   * 本地监听端口
+   */
+  localPort: number
+  /**
+   * 可选：从运行时 rule key 解析 remotePort
+   */
+  remoteRuleKey?: string
+  /**
+   * 可选：显式指定 remotePort（高于 remoteRuleKey）
+   */
+  remotePort?: number
+}
+
+export interface TunnelLocalBridgeConfig {
+  /**
+   * 是否启用本地桥接（仅声明，不代表宿主已实现）
+   */
+  enabled?: boolean
+  /**
+   * 本地监听地址（通常为 127.0.0.1）
+   */
+  localHost?: string
+  /**
+   * 映射规则集合
+   */
+  mappings?: TunnelLocalBridgeMapping[]
+  /**
+   * 预留扩展字段
+   */
+  metadata?: Record<string, any>
+}
+
 /**
  * Tunnel 意图定义
  */
@@ -152,11 +296,16 @@ export interface TunnelIntent {
   config?: Record<string, any>
   transportPolicy?: TunnelTransportPolicy
   /**
+   * 本地桥接声明（可选）
+   */
+  localBridge?: TunnelLocalBridgeConfig
+  /**
    * 远程访问地址的URL scheme（用于生成remoteUrl）
    * 例如：'vnc' for ARD (兼容VNC), 'rdp' for RDP, 'ssh' for SSH
    * 如果不指定，默认使用protocol作为scheme
+   * @deprecated 请改用 AppDefinition.remoteAddress 声明 remote URL 规则。
    */
-  remoteUrlScheme?: string
+  remoteUrlScheme?: RemoteAddressScheme
   metadata?: Record<string, any>
 }
 
@@ -205,7 +354,7 @@ export interface ChannelForwardSpec {
   aliasDomain?: string
   bufferSize?: number
   transport?: TunnelTransport
-  metadata?: Record<string, any>
+  metadata?: ChannelForwardMetadata
 }
 
 /**
@@ -303,6 +452,8 @@ export interface ExtensionComponentAdapter {
 export interface AppHookContext {
   /** 隧道信息 */
   tunnel: Tunnel
+  /** 当前关联 Edge 信息（可选，供地址/状态推导） */
+  edge?: Record<string, any> | null
   /** 宿主提供的受限 API（可选，为兼容旧扩展） */
   host?: ExtensionHostApi
   /** 触发事件（可选，用于通知宿主） */
@@ -359,6 +510,8 @@ export interface AppTab {
   adapter?: ExtensionComponentAdapter
   /** 标签页显示条件 */
   visible?: (tunnel: Tunnel) => boolean
+  /** 可选：组件 props（宿主透传） */
+  props?: Record<string, any>
 }
 
 /**
@@ -399,6 +552,9 @@ export interface AppHooks {
   
   /** 重启隧道的钩子 */
   onRestart?: (context: AppHookContext) => AppActionResult | Promise<AppActionResult>
+
+  /** 重连隧道的钩子（Edge 重连后自动调用） */
+  onReconnect?: (context: AppHookContext) => AppActionResult | Promise<AppActionResult>
   
   /** 删除隧道前的钩子 */
   onBeforeDelete?: (context: AppHookContext) => boolean | Promise<boolean>
@@ -420,16 +576,26 @@ export interface AppDefinition {
   /** App ID，对应 tunnel.appId */
   id: string
   /** App 名称 */
-  name: string
-  short: string
+  name?: string
+  short?: string
   /** App i18n 文案资源（必填：zh-CN / en） */
   i18n: AppI18nBundle
   /** 配置表单组件（用于创建隧道时填写配置） */
   ConfigForm?: any
   /** 基本信息个性化组件（作为补充显示在标准信息之后） */
   DetailInfo?: any
+  /** 隧道卡片头部扩展组件（可选，接收 props: { tunnel }） */
+  TunnelCardHeaderExtra?: any
   /** 标签页定义列表 */
   detailTabs?: AppTab[]
+  /**
+   * App 声明式远程地址策略（宿主按该声明生成 Recommended 地址）
+   */
+  remoteAddress?: AppRemoteAddressProfile
+  /**
+   * App 声明式本地桥接策略（宿主可按需实现）
+   */
+  localBridge?: TunnelLocalBridgeConfig
   /** 操作按钮定义列表 */
   actions: AppAction[]
   /** App 生命周期钩子 */
