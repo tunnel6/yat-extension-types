@@ -15,6 +15,20 @@
 export type ChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
 
 /**
+ * Tunnel 通道类型（与 api/schema/tunnel.fbs 对齐）
+ */
+export const TunnelChannel = {
+  KNOWN: 0,
+  HTTP: 1,
+  HTTPS: 2,
+  TCP: 3,
+  UDP: 4,
+  WIREGUARD: 5,
+} as const
+
+export type TunnelChannel = (typeof TunnelChannel)[keyof typeof TunnelChannel]
+
+/**
  * 通道底层传输实现（当前固定为 mTLS over TCP）
  */
 export type TunnelChannelTransport = 'mtls-tcp'
@@ -28,11 +42,18 @@ export type TunnelParticipantRole = 'publisher' | 'consumer' | 'controller'
  * Tunnel 参与设备状态
  */
 export type TunnelParticipantState = 'online' | 'offline' | 'idle' | string
-
+/**
+ * Tunnel 共享状态,是否共享至其他设备，需要与宿主约定共享语义（例如是否允许其他设备加入、是否允许查看/控制等）
+ * - `shared`: 允许共享，其他设备可加入并查看/控制（具体权限由宿主定义）需要TunnelParticipantRolele和TunnelParticipantState来描述参与设备的角色和状态
+ * - `exclusive`: 不允许共享，仅限当前设备使用
+ * - `unknown`: 未知状态，由宿主自行决定是否允许共享
+ */
+export type TunnelSharedState = 'shared' | 'exclusive' | 'unknown'
 /**
  * Tunnel 链路传输类型
  */
 export type TunnelTransport = 'p2p' | 'relay' | 'wireguard'
+
 export type RemoteAddressScheme =
   | 'http'
   | 'https'
@@ -299,13 +320,7 @@ export interface TunnelIntent {
    * 本地桥接声明（可选）
    */
   localBridge?: TunnelLocalBridgeConfig
-  /**
-   * 远程访问地址的URL scheme（用于生成remoteUrl）
-   * 例如：'vnc' for ARD (兼容VNC), 'rdp' for RDP, 'ssh' for SSH
-   * 如果不指定，默认使用protocol作为scheme
-   * @deprecated 请改用 AppDefinition.remoteAddress 声明 remote URL 规则。
-   */
-  remoteUrlScheme?: RemoteAddressScheme
+  
   metadata?: Record<string, any>
 }
 
