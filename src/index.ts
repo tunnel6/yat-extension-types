@@ -158,6 +158,75 @@ export interface TunnelEndpoint {
 }
 
 /**
+ * DNS 引导信息（用于自定义域名配置提示）
+ */
+export interface ChannelDNSGuide {
+  required: boolean
+  recordType: string
+  recordName: string
+  recordValue: string
+  hint: string
+  dns01RecordType?: string
+  dns01RecordName?: string
+  dns01RecordValue?: string
+  dns01Hint?: string
+  tlsCertStatus?: string
+  tlsCertMessage?: string
+}
+
+/**
+ * 域名状态信息（DNS + 证书）
+ */
+export interface DomainStatusValue {
+  dnsStatus: number
+  certStatus: number
+  error?: string
+  certLastError?: string
+  updatedAt?: number
+}
+
+/**
+ * DNS-01 挑战信息
+ */
+export interface DNS01Challenge {
+  recordName: string
+  recordValue: string
+  domain: string
+  createdAt: number
+  updatedAt?: number
+  lastError?: string
+}
+
+/**
+ * Tunnel 域名运行态聚合状态
+ */
+export interface RuntimeDomainStatusValue {
+  edgeId: string
+  channelId?: string
+  aliasDomainStatus?: DomainStatusValue
+  channelDomainStatus?: DomainStatusValue
+  customDomainStatus?: DomainStatusValue
+  cnameStatus?: number
+  dns01ChallengeCount: number
+  dns01Challenges: DNS01Challenge[]
+  updatedAt: number
+}
+
+/**
+ * Tunnel 路由元数据（Host/Runtime 扩展字段）
+ */
+export interface TunnelRouteMetadata extends Record<string, any> {
+  assignedDomain?: string
+  subdomain?: string
+  aliasDomain?: string
+  dnsGuide?: ChannelDNSGuide
+  ruleKey?: string
+  channelKey?: string
+  protocol?: ChannelProtocol | string
+  channelId?: string
+}
+
+/**
  * Tunnel 运行链路定义
  */
 export interface TunnelRoute {
@@ -167,7 +236,7 @@ export interface TunnelRoute {
   local?: TunnelEndpoint
   remote?: TunnelEndpoint
   remoteUrl?: string
-  metadata?: Record<string, any>
+  metadata?: TunnelRouteMetadata
 }
 
 /**
