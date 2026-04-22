@@ -401,6 +401,7 @@ export interface Tunnel {
   name: string
   status: TunnelChannelState
   appId?: string
+  shared: TunnelSharedState
   intent: TunnelIntent
   participants: TunnelParticipant[]
   channels: TunnelChannelDefinition[]
@@ -654,6 +655,35 @@ export interface AppHooks {
 }
 
 /**
+ * 创建 Tunnel 时的配置初始化上下文
+ */
+export interface AppTunnelConfigInitContext {
+  appId?: string
+  config?: Record<string, any>
+  edge?: Record<string, any> | null
+  currentDeviceId?: string
+}
+
+export type AppTunnelConfigInitializer = (
+  context: AppTunnelConfigInitContext
+) => Record<string, any>
+
+export interface AppTunnelDefaults {
+  /**
+   * Tunnel 共享默认状态（创建时生效）。
+   */
+  shared?: TunnelSharedState | boolean
+  /**
+   * Tunnel config 默认值（会与客户端配置合并）。
+   */
+  config?: Record<string, any>
+  /**
+   * Tunnel intent 默认值（预留扩展，宿主按需消费）。
+   */
+  intent?: Record<string, any>
+}
+
+/**
  * App 定义
  */
 export interface AppDefinition {
@@ -684,6 +714,15 @@ export interface AppDefinition {
   actions: AppAction[]
   /** App 生命周期钩子 */
   hooks?: AppHooks
+  /**
+   * 创建 Tunnel 时的默认值声明。
+   */
+  tunnelDefaults?: AppTunnelDefaults
+  /**
+   * 创建 Tunnel 前的配置初始化器。
+   * 宿主会将初始化结果与客户端配置合并后，再传给 createTunnel。
+   */
+  initTunnelConfig?: AppTunnelConfigInitializer
 }
 
 // ============================================================================
