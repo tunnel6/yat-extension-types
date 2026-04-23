@@ -16,8 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && npm run build:esm",
-    "build:esm": "echo 'export {};' > dist/index.mjs",
+    "build": "tsc && node -e \"require('fs').copyFileSync('dist/index.js','dist/index.mjs')\"",
+    "build:esm": "node -e \"require('fs').copyFileSync('dist/index.js','dist/index.mjs')\"",
     "prepublishOnly": "npm run build",
     "publish:gitlab": "npm publish"
   },

@@ -807,3 +807,56 @@ export type ExtensionSource = 'local' | 'remote' | 'marketplace'
  * 主题模式
  */
 export type ThemeMode = 'light' | 'dark' | 'system'
+
+/**
+ * 扩展本地化状态实例
+ */
+export interface ExtLocaleState {
+  /** 获取当前语言 */
+  get: () => string
+  /** 设置当前语言并通知所有订阅者 */
+  set: (locale: string) => void
+  /** 订阅语言变化；返回取消订阅函数 */
+  subscribe: (fn: (locale: string) => void) => () => void
+}
+
+/**
+ * 创建一个轻量的扩展本地化状态，框架无关。
+ *
+ * 用法示例（Vue 扩展）：
+ * ```ts
+ * // shared/locale.ts
+ * import { ref } from 'vue'
+ * import { createLocaleState } from '@hilow/extension-types'
+ *
+ * const _state = createLocaleState(localStorage?.getItem?.('locale') || 'zh-CN')
+ * export const locale = ref(_state.get())
+ * _state.subscribe(l => { locale.value = l })
+ * export const setLocale = _state.set
+ *
+ * // index.ts onLocaleChange hook
+ * async onLocaleChange(locale) { setLocale(locale) }
+ *
+ * // 任意组件内
+ * const msgs = { 'zh-CN': { ... }, en: { ... } }
+ * const t = computed(() => locale.value === 'en' ? msgs.en : msgs['zh-CN'])
+ * ```
+ */
+export function createLocaleState(initial = 'zh-CN'): ExtLocaleState {
+  let _locale = initial
+  const _subs: ((locale: string) => void)[] = []
+  return {
+    get: () => _locale,
+    set: (l: string) => {
+      _locale = l
+      _subs.forEach(fn => fn(l))
+    },
+    subscribe: (fn: (locale: string) => void) => {
+      _subs.push(fn)
+      return () => {
+        const i = _subs.indexOf(fn)
+        if (i >= 0) _subs.splice(i, 1)
+      }
+    },
+  }
+}
