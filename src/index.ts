@@ -14,24 +14,6 @@
  */
 export type ChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
 
-/**
- * Tunnel 通道类型（与 api/schema/tunnel.fbs 对齐）
- */
-export const TunnelChannel = {
-  KNOWN: 0,
-  HTTP: 1,
-  HTTPS: 2,
-  TCP: 3,
-  UDP: 4,
-  WIREGUARD: 5,
-} as const
-
-export type TunnelChannel = (typeof TunnelChannel)[keyof typeof TunnelChannel]
-
-/**
- * 通道底层传输实现（当前固定为 mTLS over TCP）
- */
-export type TunnelChannelTransport = 'mtls-tcp'
 
 /**
  * Tunnel 参与设备角色
@@ -50,9 +32,16 @@ export type TunnelParticipantState = 'online' | 'offline' | 'idle' | string
  */
 export type TunnelSharedState = 'shared' | 'exclusive' | 'unknown'
 /**
- * Tunnel 链路传输类型
+ * Channel 数据面链路类型
+ * 描述 channel 实际数据通信所使用的网络路径类型。
+ * - `relay`：通过 edge 节点中转（当前默认实现）
+ * - `p2p`：设备间 UDP 打洞直连（未来）
+ * - `wireguard`：WireGuard 组网后直连（未来）
+ *
+ * 注意：控制面（tunnel 生命周期管理、edge 指令下发）始终走 mTLS 信道，
+ * 与此类型无关，不在业务模型中暴露。
  */
-export type TunnelTransport = 'p2p' | 'relay' | 'wireguard'
+export type ChannelLinkType = 'relay' | 'p2p' | 'wireguard'
 
 export type RemoteAddressScheme =
   | 'http'
@@ -86,6 +75,8 @@ export interface TunnelRemoteAddressLine {
   scheme: RemoteAddressScheme
   domain: string
   url: string
+  /** 关联的 channel key（可选，用于定位地址来自哪个 channel） */
+  channelKey?: string
 }
 
 export interface TunnelRemoteAddressHint {
@@ -107,7 +98,7 @@ export interface TunnelRemoteAddressResolution {
 }
 
 export interface AppRemoteAddressResolveContext {
-  tunnel: Tunnel
+  tunnel: Tunnel & Record<string, any>
   edge?: Record<string, any> | null
 }
 
@@ -213,43 +204,18 @@ export interface RuntimeDomainStatusValue {
 }
 
 /**
- * Tunnel 路由元数据（Host/Runtime 扩展字段）
+ * Channel 元数据（Host/Runtime 扩展字段）
  */
-export interface TunnelRouteMetadata extends Record<string, any> {
+export interface TunnelChannelMetadata extends Record<string, any> {
   assignedDomain?: string
   subdomain?: string
   aliasDomain?: string
   dnsGuide?: ChannelDNSGuide
-  ruleKey?: string
-  channelKey?: string
-  protocol?: ChannelProtocol | string
   channelId?: string
 }
 
 /**
- * Tunnel 运行链路定义
- */
-export interface TunnelRoute {
-  id: string
-  transport: TunnelTransport
-  state?: TunnelChannelState
-  local?: TunnelEndpoint
-  remote?: TunnelEndpoint
-  remoteUrl?: string
-  metadata?: TunnelRouteMetadata
-}
-
-/**
- * Tunnel 通道绑定定义（业务意图）
- */
-export interface TunnelChannelBinding {
-  localHost?: string
-  localPort: number
-  remotePort?: number
-}
-
-/**
- * Tunnel 转发规则定义（协议与端口绑定）
+ * Channel 元数据（用于 ChannelStartSpec）
  */
 export interface ChannelForwardMetadata {
   /**
@@ -261,40 +227,69 @@ export interface ChannelForwardMetadata {
 }
 
 /**
- * Tunnel 转发规则定义（协议与端口绑定）
+ * Channel 数据面链路状态
+ * 描述 channel 当前实际使用的数据面路径及协商状态。
+ *
+ * - relay 场景：remoteEndpoint 为 edge 分配的公网中转地址，由系统回写
+ * - p2p 场景：endpoint 为打洞成功后的直连地址，candidates 为协商中的候选列表
+ * - wireguard 场景：endpoint 为 WireGuard 对端地址
  */
-export interface TunnelForwardRule {
-  key: string
-  protocol: ChannelProtocol
-  binding: TunnelChannelBinding
-  channelId?: string
-  metadata?: ChannelForwardMetadata
+export interface ChannelDataPath {
+  /** 数据面链路类型 */
+  type: ChannelLinkType
+  /** 链路协商/连接状态 */
+  state: 'negotiating' | 'connected' | 'failed'
+  /**
+   * relay 专用：edge 分配给此 channel 的远端中转地址（host:port 或 domain）
+   * p2p / wireguard 不使用此字段，远端地址由 endpoint 统一表示
+   */
+  remoteEndpoint?: string
+  /**
+   * p2p / wireguard 专用：协商成功后的直连端点地址
+   */
+  endpoint?: string
+  /**
+   * p2p 专用：ICE/STUN 候选地址列表（协商阶段使用）
+   */
+  candidates?: string[]
 }
 
 /**
- * Tunnel 通道定义
+ * Tunnel Channel（真实端口链路）
+ *
+ * Channel 是业务可见的最小连接单元，描述“本地端口 ↔ 远端服务”的绑定关系。
+ * - 意图字段（protocol / local）在 tunnel 创建时确定，不随运行态变化
+ * - 运行态字段（state / remote / remoteUrl / dataPath）由系统在 channel 建立后回写
+ * - remote 仅在 relay 模式下有意义（edge 分配的公网地址）；p2p 模式下远端地址在 dataPath.endpoint
  */
-export interface TunnelChannelDefinition {
+export interface TunnelChannel {
+  /**
+   * Channel 唯一标识（在同一 Tunnel 内唯一）
+   * 例如：'vnc-tcp-5900' / 'http-80' / 'ssh-tcp-22'
+   */
   key: string
-  transport?: TunnelChannelTransport
-  rules: TunnelForwardRule[]
+  /** 通信协议 */
+  protocol: ChannelProtocol
+  /** 本地监听端点（意图，不变） */
+  local: TunnelEndpoint
   /**
-   * 首选规则的key（用于生成主要的远程访问地址）
+   * 远端访问端点（运行态，relay 模式由系统回写）
+   * p2p 模式下此字段为空，实际端点在 dataPath.endpoint
    */
-  preferredRuleKey?: string
+  remote?: TunnelEndpoint
+  /** 远端访问 URL（运行态，供 UI 展示用） */
+  remoteUrl?: string
+  /** Channel 连接状态（运行态） */
+  state?: TunnelChannelState
   /**
-   * 兼容投影视图字段（一般取主规则）
+   * 数据面链路状态（运行态，可选）
+   * 仅在需要感知链路类型或协商状态时使用
    */
-  protocol?: ChannelProtocol
+  dataPath?: ChannelDataPath
+  /** edge 侧分配的物理 channel ID */
   channelId?: string
-  status?: TunnelChannelState
-  /**
-   * 兼容投影视图字段（一般取主规则绑定）
-   */
-  binding?: TunnelChannelBinding
-  selectedRouteId?: string
-  routes: TunnelRoute[]
-  metadata?: Record<string, any>
+  /** 扩展元数据 */
+  metadata?: TunnelChannelMetadata
 }
 
 /**
@@ -310,29 +305,86 @@ export interface TunnelParticipant {
 }
 
 /**
- * Tunnel 会话定义
+ * Session 数据面链路状态
+ *
+ * 描述某个 consumer 接入时的数据面协商结果。
+ * 一个 session 覆盖该 consumer 参与的所有 channel（channelKeys），
+ * 这些 channel 共用同一次数据面协商（共进退）。
+ *
+ * relay 与 p2p 的差异：
+ * - relay：各 channel 在 edge 上有独立的中转端口，通过 channelEndpoints 表示
+ * - p2p / wireguard：一次打洞/组网后所有 channel 共用同一直连端点 endpoint
+ */
+export interface SessionDataPath {
+  /** 数据面链路类型 */
+  type: ChannelLinkType
+  /** 链路协商/连接状态 */
+  state: 'negotiating' | 'connected' | 'failed'
+  /**
+   * relay 专用：各 channel 的 edge 中转地址映射
+   * key 为 channelKey，value 为 edge 分配的远端地址（host:port 或 domain）
+   */
+  channelEndpoints?: Record<string, string>
+  /**
+   * p2p / wireguard 专用：协商成功后的直连端点
+   * 所有 channelKeys 共用此端点
+   */
+  endpoint?: string
+  /**
+   * p2p 专用：ICE/STUN 候选地址列表（协商阶段使用）
+   */
+  candidates?: string[]
+}
+
+/**
+ * Tunnel 会话（consumer 接入实例）
+ *
+ * Session 描述一个 consumer 设备接入 tunnel 的运行态实例。
+ * 一个 tunnel 可同时存在多个 session（多 consumer 并发），每个 session 独立。
+ *
+ * 语义说明：
+ * - session 是 per-consumer 粒度，不是 per-channel 粒度
+ * - session.channelKeys 表示此次接入覆盖的 channel 集合（共进退）
+ * - session.dataPath 描述此 consumer 与 publisher 之间的数据面链路
+ * - 对于 HTTP 代理等无明确 consumer 的场景，sessions 为空数组，
+ *   relay 端点信息直接存储在 channel.remote
  */
 export interface TunnelSession {
   id: string
-  state?: TunnelChannelState
-  channelKeys?: string[]
-  transport?: TunnelTransport
+  /** 此 session 覆盖的 channel key 列表（这些 channel 共进退） */
+  channelKeys: string[]
+  /** 数据面链路状态 */
+  dataPath: SessionDataPath
+  /** publisher 设备 ID */
   publisherDeviceId?: string
+  /** consumer 设备 ID（无明确 consumer 时为空） */
   consumerDeviceId?: string
+  /** controller 设备 ID（可选，用于远程控制场景） */
   controllerDeviceId?: string
+  /** session 整体连接状态（可从 dataPath.state 推导） */
+  state?: TunnelChannelState
   startedAt?: string
   updatedAt?: string
   metadata?: Record<string, any>
 }
 
 /**
- * Tunnel 传输策略
+ * Tunnel 数据面链路偏好策略
+ * 宿主按此策略选择 channel 数据面链路类型，实际能力由运行时决定。
  */
-export interface TunnelTransportPolicy {
-  preferred?: TunnelTransport[]
+export interface TunnelLinkPolicy {
+  /** 优先尝试的链路类型顺序 */
+  preferred?: ChannelLinkType[]
+  /** 是否允许降级到 relay（当 p2p/wireguard 协商失败时）*/
   allowRelayFallback?: boolean
+  /** 是否强制要求直连（p2p 或 wireguard），不允许 relay 降级 */
   requireDirect?: boolean
 }
+
+/**
+ * @deprecated 请使用 TunnelLinkPolicy
+ */
+export type TunnelTransportPolicy = TunnelLinkPolicy
 
 export type LocalBridgeProtocol = 'tcp' | 'udp'
 
@@ -380,32 +432,65 @@ export interface TunnelLocalBridgeConfig {
 
 /**
  * Tunnel 意图定义
+ * 描述用户希望这个 tunnel 如何运行（业务声明，不含运行态）。
  */
 export interface TunnelIntent {
+  /** tunnel 的主要通信协议（可选，仅描述意图，实际协议由 channels 决定） */
   protocol?: ChannelProtocol | string
+  /** 应用级配置（由 App/Extension 定义结构） */
   config?: Record<string, any>
-  transportPolicy?: TunnelTransportPolicy
+  /**
+   * 数据面链路偏好策略（可选）
+   * 指示宿主优先选择哪种链路类型，以及是否允许 relay 降级
+   */
+  linkPolicy?: TunnelLinkPolicy
+  /**
+   * @deprecated 请使用 linkPolicy
+   */
+  transportPolicy?: TunnelLinkPolicy
   /**
    * 本地桥接声明（可选）
    */
   localBridge?: TunnelLocalBridgeConfig
-  
   metadata?: Record<string, any>
 }
 
 /**
- * 隧道信息（意图 + 参与者 + 运行态）
+ * Tunnel（随道）
+ *
+ * Tunnel 是最高层业务意图，描述一个代理应用的完整运行模型。
+ *
+ * 职责分层：
+ * - intent：用户的静态业务声明（协议偏好、链路策略、本地桥接等）
+ * - channels：端口绑定声明（静态意图，不随连接数量变化）
+ * - sessions：consumer 接入实例（动态运行态，per-consumer）
+ * - participants：参与设备列表（publisher / consumer / controller）
+ *
+ * 状态推导规则：
+ * - tunnel.status 由 channels[].state 聚合推导
+ * - channel.state 由 sessions 中对应 channelKey 的连接状态推导
+ * - 无 session 时 channel.state = 'inactive'，tunnel.status = 'inactive'
  */
 export interface Tunnel {
   id: string
   name: string
+  /** tunnel 整体状态（从 channels 聚合推导） */
   status: TunnelChannelState
   appId?: string
   shared: TunnelSharedState
   intent: TunnelIntent
   participants: TunnelParticipant[]
-  channels: TunnelChannelDefinition[]
-  sessions?: TunnelSession[]
+  /**
+   * Channel 列表（端口绑定声明）
+   * 每个 channel 代表一个“本地端口 ↔ 远端服务”的绑定，数量固定不随 consumer 数量变化
+   */
+  channels: TunnelChannel[]
+  /**
+   * Session 列表（consumer 接入实例，动态）
+   * 每个 session 代表一个 consumer 的当前接入，包含数据面链路状态
+   * 对于无明确 consumer 的 tunnel（如 HTTP 代理），此列表为空
+   */
+  sessions: TunnelSession[]
   createdAt?: string
   updatedAt?: string
   metadata?: Record<string, any>
@@ -427,9 +512,12 @@ export interface HostResult<T> {
 }
 
 /**
- * 通道启动规则（扩展侧输入）
+ * 通道启动声明（扩展侧输入）
+ *
+ * 每个 ChannelStartSpec 对应一条真实传输链路，与运行态的 TunnelChannel 一一对应。
+ * tcp/5900 和 udp/5900 应声明为两个独立的 ChannelStartSpec。
  */
-export interface ChannelForwardSpec {
+export interface ChannelStartSpec {
   key: string
   protocol: ChannelProtocol
   localHost?: string
@@ -438,25 +526,15 @@ export interface ChannelForwardSpec {
   subdomain?: string
   aliasDomain?: string
   bufferSize?: number
-  transport?: TunnelTransport
+  transport?: ChannelLinkType
   metadata?: ChannelForwardMetadata
-}
-
-/**
- * 通道启动规格（扩展侧输入）
- * key 表示逻辑 channel，rules 表示该 channel 下的多协议/多端口转发规则。
- */
-export interface ChannelSpec {
-  key: string
-  rules: ChannelForwardSpec[]
-  metadata?: Record<string, any>
 }
 
 /**
  * 启动多通道输入参数
  */
 export interface StartChannelsInput {
-  channels: ChannelSpec[]
+  channels: ChannelStartSpec[]
   reconnect?: boolean
   mode?: 'all-or-nothing' | 'best-effort'
   actorDeviceId?: string
@@ -704,8 +782,9 @@ export interface AppDefinition {
   detailTabs?: AppTab[]
   /**
    * App 声明式远程地址策略（宿主按该声明生成 Recommended 地址）
+   * 所有 App 必须提供 remoteAddress，以统一地址解析流程。
    */
-  remoteAddress?: AppRemoteAddressProfile
+  remoteAddress: AppRemoteAddressProfile
   /**
    * App 声明式本地桥接策略（宿主可按需实现）
    */
