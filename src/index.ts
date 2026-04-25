@@ -554,7 +554,6 @@ export interface StopChannelsInput {
 
 /**
  * 通道运行时 SDK（扩展可调用）
- * 注意：这里不暴露 edge online/offline 等管理能力。
  */
 export interface ExtensionChannelRuntimeApi {
   startChannels(input: StartChannelsInput): Promise<HostResult<Tunnel>>
@@ -762,6 +761,15 @@ export interface AppTunnelDefaults {
 }
 
 /**
+ * App 角色展示名称映射（展示层可按业务语义覆盖默认角色文案）
+ */
+export interface AppActorRoleLabels {
+  publisher?: string
+  consumer?: string
+  controller?: string
+}
+
+/**
  * App 定义
  */
 export interface AppDefinition {
@@ -802,6 +810,11 @@ export interface AppDefinition {
    * 宿主会将初始化结果与客户端配置合并后，再传给 createTunnel。
    */
   initTunnelConfig?: AppTunnelConfigInitializer
+  /**
+   * 角色展示名称映射（可选）。
+   * 仅影响 UI 文案，不改变协议层角色语义（publisher/consumer/controller）。
+   */
+  actorRoleLabels?: AppActorRoleLabels
 }
 
 // ============================================================================
