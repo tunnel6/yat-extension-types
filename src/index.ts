@@ -815,6 +815,20 @@ export interface AppDefinition {
    * 仅影响 UI 文案，不改变协议层角色语义（publisher/consumer/controller）。
    */
   actorRoleLabels?: AppActorRoleLabels
+  /**
+   * 协议兼容声明（OR 语义）。
+   * 用于兼容历史扩展：满足其中任一协议即可展示/可用。
+   */
+  supportedProtocols?: ChannelProtocol[]
+  /**
+   * 协议必需声明（AND 语义）。
+   * 所有声明协议均需可用，才允许展示/创建。
+   *
+   * 说明：
+   * 当前通过 supportedProtocols(required optional) 组合实现基础语义，
+   * 未来可平滑扩展为更复杂的协议表达式（AND/OR 组合）而不破坏兼容性。
+   */
+  requiredProtocols?: ChannelProtocol[]
 }
 
 // ============================================================================
