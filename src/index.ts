@@ -189,14 +189,52 @@ export interface DNS01Challenge {
 }
 
 /**
+ * 统一域名运行态记录类型
+ * 0=UNKNOWN, 1=CNAME, 2=TXT
+ */
+export type DomainRuntimeRecordType = 0 | 1 | 2
+
+/**
+ * 统一域名运行态记录（可直接用于 UI 配置引导）
+ */
+export interface DomainRuntimeRecordValue {
+  recordType: DomainRuntimeRecordType
+  recordName: string
+  recordValue: string
+  ttl: number
+  source: string
+}
+
+/**
+ * 统一域名运行态（权威状态）
+ */
+export interface DomainRuntimeValue {
+  ownerView: boolean
+  state: number
+  requiredRecords: DomainRuntimeRecordValue[]
+  pendingReasonCode: string
+  lastError: string
+  cnameStatus: number
+  certStatus: number
+  updatedAt: number
+}
+
+/**
  * Tunnel 域名运行态聚合状态
  */
 export interface RuntimeDomainStatusValue {
-  edgeId: string
+  /**
+   * @deprecated 内部关联字段，扩展侧不应依赖该值做业务判断。
+   */
+  edgeId?: string
+  /**
+   * @deprecated 内部关联字段，扩展侧不应依赖该值做业务判断。
+   */
   channelId?: string
   aliasDomainStatus?: DomainStatusValue
-  channelDomainStatus?: DomainStatusValue
-  customDomainStatus?: DomainStatusValue
+  assignedDomainStatus?: DomainStatusValue
+  edgeCustomDomainStatus?: DomainStatusValue
+  domainRuntime?: DomainRuntimeValue
   cnameStatus?: number
   dns01ChallengeCount: number
   dns01Challenges: DNS01Challenge[]
@@ -491,6 +529,10 @@ export interface Tunnel {
    * 对于无明确 consumer 的 tunnel（如 HTTP 代理），此列表为空
    */
   sessions: TunnelSession[]
+  /**
+   * 统一域名运行态快照（由宿主从远端运行态镜像投影，作为 DNS/CERT 的唯一业务判断输入）
+   */
+  runtimeDomainStatus?: RuntimeDomainStatusValue
   createdAt?: string
   updatedAt?: string
   metadata?: Record<string, any>
@@ -829,6 +871,29 @@ export interface AppDefinition {
    * 未来可平滑扩展为更复杂的协议表达式（AND/OR 组合）而不破坏兼容性。
    */
   requiredProtocols?: ChannelProtocol[]
+  /**
+   * 声明 App 配置中承载「自定义域名（alias domain）」的字段 key。
+   *
+   * 核心设计原则：自定义域名是 Tunnel 实例的运行时属性，不由 App 类型决定是否必填。
+   *
+   * 语义：
+   *   - 未声明 / undefined：App 与 alias domain 无关
+   *     → 任何 Edge 的 alias_domain_policy 都不影响该 App 的 Edge 选择
+   *   - string：config 中承载域名的字段 key，支持 dot-path（如 'network.domain'）
+   *   - string[]：多候选 key（按顺序取首个非空），便于扩展字段改名期的向后兼容
+   *
+   * 运行时校验规则：
+   *   resolveAppAliasDomain(app, tunnel.config) →
+   *     undefined   ：App 不声明 → 跳过 alias domain 维度校验
+   *     ''          ：声明了但本次未填 → 跳过 Edge.supportsCustomDomain 校验
+   *     非空字符串  ：本次使用 alias domain → Edge 必须 supportsCustomDomain
+   *
+   * 示例：
+   *   aliasDomainKey: 'customDomain'
+   *   aliasDomainKey: ['customDomain', 'custom_domain']   // 迁移兼容
+   *   aliasDomainKey: 'network.alias'                     // dot-path
+   */
+  aliasDomainKey?: string | string[]
 }
 
 // ============================================================================
