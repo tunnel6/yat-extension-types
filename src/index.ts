@@ -430,6 +430,16 @@ export interface TunnelLinkPolicy {
   allowRelayFallback?: boolean
   /** 是否强制要求直连（p2p 或 wireguard），不允许 relay 降级 */
   requireDirect?: boolean
+  /**
+   * 可选：在 channel 启动期上报“直连不可用 -> relay 回退”占位事件。
+   * 默认不建议开启，仅用于联调兼容。
+   */
+  quicStartupFallbackReport?: boolean
+  /**
+   * 可选：当 transport 本地 TCP 建连成功时上报 direct-connected 事件。
+   * 默认关闭，仅用于 QUIC 数据面联调观测。
+   */
+  quicConnectedOnLocalOpenReport?: boolean
 }
 
 /**
@@ -445,6 +455,14 @@ export interface TunnelConfigBase {
    * 统一 P2P 开关字段（建议所有 app/ext configForm 使用该命名）
    */
   p2pMode?: TunnelP2PMode
+  /**
+   * 可选：映射到 tunnel.intent.linkPolicy.quicStartupFallbackReport
+   */
+  quicStartupFallbackReport?: boolean
+  /**
+   * 可选：映射到 tunnel.intent.linkPolicy.quicConnectedOnLocalOpenReport
+   */
+  quicConnectedOnLocalOpenReport?: boolean
 }
 
 export type LocalBridgeProtocol = 'tcp' | 'udp'
