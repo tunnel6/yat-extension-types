@@ -43,6 +43,14 @@ export type TunnelSharedState = 'shared' | 'exclusive' | 'unknown'
  */
 export type ChannelLinkType = 'relay' | 'p2p' | 'wireguard'
 
+/**
+ * Tunnel 级 P2P 启用模式（统一命名）
+ * - `off`：仅 relay，不尝试 p2p
+ * - `preferred`：优先 p2p，失败可回退 relay
+ * - `required`：必须 p2p，失败不允许回退 relay
+ */
+export type TunnelP2PMode = 'off' | 'preferred' | 'required'
+
 export type RemoteAddressScheme =
   | 'http'
   | 'https'
@@ -411,6 +419,11 @@ export interface TunnelSession {
  * 宿主按此策略选择 channel 数据面链路类型，实际能力由运行时决定。
  */
 export interface TunnelLinkPolicy {
+  /**
+   * 统一的 P2P 模式声明（可选）。
+   * 若该字段存在，宿主可据此推导 preferred/allowRelayFallback/requireDirect。
+   */
+  p2pMode?: TunnelP2PMode
   /** 优先尝试的链路类型顺序 */
   preferred?: ChannelLinkType[]
   /** 是否允许降级到 relay（当 p2p/wireguard 协商失败时）*/
@@ -423,6 +436,16 @@ export interface TunnelLinkPolicy {
  * @deprecated 请使用 TunnelLinkPolicy
  */
 export type TunnelTransportPolicy = TunnelLinkPolicy
+
+/**
+ * 通用 Tunnel 配置基类（用于 configForm 统一字段约定）
+ */
+export interface TunnelConfigBase {
+  /**
+   * 统一 P2P 开关字段（建议所有 app/ext configForm 使用该命名）
+   */
+  p2pMode?: TunnelP2PMode
+}
 
 export type LocalBridgeProtocol = 'tcp' | 'udp'
 
@@ -476,7 +499,7 @@ export interface TunnelIntent {
   /** tunnel 的主要通信协议（可选，仅描述意图，实际协议由 channels 决定） */
   protocol?: ChannelProtocol | string
   /** 应用级配置（由 App/Extension 定义结构） */
-  config?: Record<string, any>
+  config?: Record<string, any> & TunnelConfigBase
   /**
    * 数据面链路偏好策略（可选）
    * 指示宿主优先选择哪种链路类型，以及是否允许 relay 降级
@@ -595,6 +618,25 @@ export interface StopChannelsInput {
 }
 
 /**
+ * 上报 QUIC 连通性结果输入参数（按 channel）
+ */
+export interface ReportQuicConnectivityInput {
+  channelId: string
+  directAvailable: boolean
+  directError?: string
+}
+
+/**
+ * 上报 QUIC client-info 输入参数（按 channel）
+ */
+export interface ReportQuicClientInfoInput {
+  channelId: string
+  clientId: string
+  natType?: number
+  publicAddr?: string
+}
+
+/**
  * 通道运行时 SDK（扩展可调用）
  */
 export interface ExtensionChannelRuntimeApi {
@@ -602,6 +644,8 @@ export interface ExtensionChannelRuntimeApi {
   stopChannels(input?: StopChannelsInput): Promise<HostResult<Tunnel>>
   getTunnel(): Promise<HostResult<Tunnel>>
   isEdgeConnected(): Promise<HostResult<boolean>>
+  reportQuicConnectivityOutcomeByChannel?(input: ReportQuicConnectivityInput): Promise<HostResult<void>>
+  reportQuicClientInfoByChannel?(input: ReportQuicClientInfoInput): Promise<HostResult<void>>
 }
 
 /**
