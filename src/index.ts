@@ -632,6 +632,7 @@ export interface StopChannelsInput {
   keys?: string[]
   reason?: string
   actorDeviceId?: string
+  actorRole?: TunnelParticipantRole
   sessionId?: string
 }
 
