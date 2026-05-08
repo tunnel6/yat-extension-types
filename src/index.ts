@@ -392,7 +392,7 @@ export interface SessionDataPath {
  * - session 是 per-consumer 粒度，不是 per-channel 粒度
  * - session.channelKeys 表示此次接入覆盖的 channel 集合（共进退）
  * - session.dataPath 描述此 consumer 与 publisher 之间的数据面链路
- * - 对于 HTTP 代理等无明确 consumer 的场景，sessions 为空数组，
+ * - 对于 HTTP 代理等无明确 consumer 的场景，peerSessions 为空数组，
  *   relay 端点信息直接存储在 channel.remote
  */
 export interface TunnelSession {
@@ -542,12 +542,12 @@ export interface TunnelIntent {
  * 职责分层：
  * - intent：用户的静态业务声明（协议偏好、链路策略、本地桥接等）
  * - channels：端口绑定声明（静态意图，不随连接数量变化）
- * - sessions：consumer 接入实例（动态运行态，per-consumer）
+ * - peerSessions：consumer 接入实例（动态运行态，per-consumer）
  * - participants：参与设备列表（publisher / consumer / controller）
  *
  * 状态推导规则：
  * - tunnel.status 由 channels[].state 聚合推导
- * - channel.state 由 sessions 中对应 channelKey 的连接状态推导
+ * - channel.state 由 peerSessions 中对应 channelKey 的连接状态推导
  * - 无 session 时 channel.state = 'inactive'，tunnel.status = 'inactive'
  */
 export interface Tunnel {
@@ -565,11 +565,11 @@ export interface Tunnel {
    */
   channels: TunnelChannel[]
   /**
-   * Session 列表（consumer 接入实例，动态）
+   * Peer Session 列表（consumer 接入实例，动态）
    * 每个 session 代表一个 consumer 的当前接入，包含数据面链路状态
    * 对于无明确 consumer 的 tunnel（如 HTTP 代理），此列表为空
    */
-  sessions: TunnelSession[]
+  peerSessions: TunnelSession[]
   /**
    * 统一域名运行态快照（由宿主从远端运行态镜像投影，作为 DNS/CERT 的唯一业务判断输入）
    */
@@ -630,6 +630,12 @@ export interface StartChannelsInput {
  */
 export interface StopChannelsInput {
   keys?: string[]
+  /**
+   * 停止作用域
+   * - `global`（默认）：向 edge 发送 stop，关闭对应 channel
+   * - `session-local`：仅在当前设备本地结束会话，不向 edge 发送全局 stop
+   */
+  scope?: 'global' | 'session-local'
   reason?: string
   actorDeviceId?: string
   actorRole?: TunnelParticipantRole
