@@ -441,12 +441,6 @@ export interface TunnelLinkPolicy {
    */
   quicConnectedOnLocalOpenReport?: boolean
 }
-
-/**
- * @deprecated 请使用 TunnelLinkPolicy
- */
-export type TunnelTransportPolicy = TunnelLinkPolicy
-
 /**
  * 通用 Tunnel 配置基类（用于 configForm 统一字段约定）
  */
@@ -523,10 +517,6 @@ export interface TunnelIntent {
    * 指示宿主优先选择哪种链路类型，以及是否允许 relay 降级
    */
   linkPolicy?: TunnelLinkPolicy
-  /**
-   * @deprecated 请使用 linkPolicy
-   */
-  transportPolicy?: TunnelLinkPolicy
   /**
    * 本地桥接声明（可选）
    */
