@@ -446,6 +446,24 @@ export interface TunnelLinkPolicy {
  */
 export interface TunnelConfigBase {
   /**
+   * 创建设备 ID（审计字段，建议创建后保持不变）
+   */
+  creatorDeviceId?: string
+  /**
+   * 创建设备主机名（审计字段，建议创建后保持不变）
+   */
+  creatorDeviceHostname?: string
+  /**
+   * 当前管理设备 ID（接管时可变）
+   * - 新模型建议使用该字段表达“当前管理主机”
+   * - 兼容旧客户端时可与 creatorDeviceId 同步写入
+   */
+  managerDeviceId?: string
+  /**
+   * 当前管理设备主机名（接管时可变）
+   */
+  managerDeviceHostname?: string
+  /**
    * 统一 P2P 开关字段（建议所有 app/ext configForm 使用该命名）
    */
   p2pMode?: TunnelP2PMode
