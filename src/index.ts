@@ -634,16 +634,33 @@ export interface StartChannelsInput {
 }
 
 /**
+ * 加入协商输入参数（consumer/controller）
+ */
+export interface JoinChannelsInput {
+  channels: ChannelStartSpec[]
+  reconnect?: boolean
+  mode?: 'all-or-nothing' | 'best-effort'
+  actorDeviceId?: string
+  actorRole?: TunnelParticipantRole
+  sessionId?: string
+}
+
+/**
  * 停止通道输入参数
  */
 export interface StopChannelsInput {
   keys?: string[]
-  /**
-   * 停止作用域
-   * - `global`（默认）：向 edge 发送 stop，关闭对应 channel
-   * - `session-local`：仅在当前设备本地结束会话，不向 edge 发送全局 stop
-   */
-  scope?: 'global' | 'session-local'
+  reason?: string
+  actorDeviceId?: string
+  actorRole?: TunnelParticipantRole
+  sessionId?: string
+}
+
+/**
+ * 离开协商输入参数（session-local）
+ */
+export interface LeaveChannelsInput {
+  keys?: string[]
   reason?: string
   actorDeviceId?: string
   actorRole?: TunnelParticipantRole
@@ -674,7 +691,9 @@ export interface ReportQuicClientInfoInput {
  */
 export interface ExtensionChannelRuntimeApi {
   startChannels(input: StartChannelsInput): Promise<HostResult<Tunnel>>
+  joinChannels(input: JoinChannelsInput): Promise<HostResult<Tunnel>>
   stopChannels(input?: StopChannelsInput): Promise<HostResult<Tunnel>>
+  leaveChannels(input?: LeaveChannelsInput): Promise<HostResult<Tunnel>>
   getTunnel(): Promise<HostResult<Tunnel>>
   isEdgeConnected(): Promise<HostResult<boolean>>
   reportQuicConnectivityOutcomeByChannel?(input: ReportQuicConnectivityInput): Promise<HostResult<void>>
