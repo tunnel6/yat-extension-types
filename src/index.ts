@@ -383,32 +383,113 @@ export interface SessionDataPath {
 }
 
 /**
- * Tunnel 会话（consumer 接入实例）
+ * V2 会话模型：publisher 视角下的 consumer/controller 接入条目
+ */
+export interface TunnelSessionConsumer {
+  /**
+   * consumer/controller 逻辑会话 ID（通常对应 actorSessionId）
+   */
+  id: string
+  /**
+   * 与 id 等价的显式字段（便于跨端兼容解析）
+   */
+  sessionId?: string
+  /**
+   * 会话角色：consumer/controller
+   */
+  role: 'consumer' | 'controller' | string
+  /**
+   * 对端设备 ID
+   */
+  deviceId?: string
+  /**
+   * 会话级状态（active / negotiating / failed / stopped / inactive）
+   */
+  state?: TunnelChannelState
+  /**
+   * 此会话覆盖的 channel key 列表（共进退）
+   */
+  channelKeys: string[]
+  /**
+   * 数据面链路状态（同一会话内共享协商结果）
+   */
+  dataPath: SessionDataPath
+  /**
+   * 可选：底层传输会话 ID（单值）
+   */
+  transportSessionId?: string
+  /**
+   * 可选：底层传输会话 ID 列表（多值）
+   */
+  transportSessionIds?: string[]
+  startedAt?: string
+  updatedAt?: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * V2 会话模型：publisher 聚合信息
+ */
+export interface TunnelSessionPublisher {
+  /**
+   * publisher 逻辑会话 ID
+   */
+  sessionId?: string
+  /**
+   * publisher 设备 ID
+   */
+  deviceId?: string
+  metadata?: Record<string, any>
+}
+
+/**
+ * V2 会话模型：publisher 下 consumer/controller 连接汇总
+ */
+export interface TunnelSessionSummary {
+  state?: TunnelChannelState
+  consumerCount?: number
+  activeCount?: number
+  connectedCount?: number
+  negotiatingCount?: number
+  failedCount?: number
+  inactiveCount?: number
+}
+
+/**
+ * Tunnel 会话（V2：publisher + consumers）
  *
- * Session 描述一个 consumer 设备接入 tunnel 的运行态实例。
- * 一个 tunnel 可同时存在多个 session（多 consumer 并发），每个 session 独立。
+ * Session 描述一个 publisher 设备下的运行态聚合视图；
+ * 实际连接实例位于 consumers[]，每个 consumer/controller 独立建链与协商。
  *
  * 语义说明：
- * - session 是 per-consumer 粒度，不是 per-channel 粒度
- * - session.channelKeys 表示此次接入覆盖的 channel 集合（共进退）
- * - session.dataPath 描述此 consumer 与 publisher 之间的数据面链路
+ * - 顶层 session 表示 publisher 聚合，不直接代表单个 consumer 链路
+ * - consumers[] 是 per-consumer/controller 粒度
+ * - consumer.channelKeys 表示对应会话覆盖的 channel 集合（共进退）
+ * - consumer.dataPath 描述该 consumer 与 publisher 之间的数据面链路
  * - 对于 HTTP 代理等无明确 consumer 的场景，peerSessions 为空数组，
  *   relay 端点信息直接存储在 channel.remote
  */
 export interface TunnelSession {
+  /**
+   * publisher 逻辑会话 ID（聚合键）
+   */
   id: string
-  /** 此 session 覆盖的 channel key 列表（这些 channel 共进退） */
+  /**
+   * publisher 聚合覆盖的 channel key 列表（便于快速过滤）
+   */
   channelKeys: string[]
-  /** 数据面链路状态 */
-  dataPath: SessionDataPath
-  /** publisher 设备 ID */
-  publisherDeviceId?: string
-  /** consumer 设备 ID（无明确 consumer 时为空） */
-  consumerDeviceId?: string
-  /** controller 设备 ID（可选，用于远程控制场景） */
-  controllerDeviceId?: string
-  /** session 整体连接状态（可从 dataPath.state 推导） */
-  state?: TunnelChannelState
+  /**
+   * publisher 聚合信息
+   */
+  publisher: TunnelSessionPublisher
+  /**
+   * consumer/controller 会话明细
+   */
+  consumers: TunnelSessionConsumer[]
+  /**
+   * 聚合摘要（可选）
+   */
+  summary?: TunnelSessionSummary
   startedAt?: string
   updatedAt?: string
   metadata?: Record<string, any>
@@ -550,12 +631,12 @@ export interface TunnelIntent {
  * 职责分层：
  * - intent：用户的静态业务声明（协议偏好、链路策略、本地桥接等）
  * - channels：端口绑定声明（静态意图，不随连接数量变化）
- * - peerSessions：consumer 接入实例（动态运行态，per-consumer）
+ * - peerSessions：publisher 聚合会话（动态运行态，内含 consumers 明细）
  * - participants：参与设备列表（publisher / consumer / controller）
  *
  * 状态推导规则：
  * - tunnel.status 由 channels[].state 聚合推导
- * - channel.state 由 peerSessions 中对应 channelKey 的连接状态推导
+ * - channel.state 由 peerSessions[].consumers[] 中对应 channelKey 的连接状态推导
  * - 无 session 时 channel.state = 'inactive'，tunnel.status = 'inactive'
  */
 export interface Tunnel {
@@ -574,10 +655,14 @@ export interface Tunnel {
   channels: TunnelChannel[]
   /**
    * Peer Session 列表（consumer 接入实例，动态）
-   * 每个 session 代表一个 consumer 的当前接入，包含数据面链路状态
+   * 每个 session 代表一个 publisher 聚合视图，具体 consumer 在 consumers[] 中
    * 对于无明确 consumer 的 tunnel（如 HTTP 代理），此列表为空
    */
   peerSessions: TunnelSession[]
+  /**
+   * peerSessions 版本号（V2=2）
+   */
+  peerSessionsVersion?: number
   /**
    * 统一域名运行态快照（由宿主从远端运行态镜像投影，作为 DNS/CERT 的唯一业务判断输入）
    */
