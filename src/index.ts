@@ -332,6 +332,14 @@ export interface TunnelChannel {
    * 仅在需要感知链路类型或协商状态时使用
    */
   dataPath?: ChannelDataPath
+  /**
+   * Channel 级策略快照（显式字段，避免 metadata-only 推断）
+   */
+  linkPolicy?: TunnelLinkPolicy
+  /**
+   * Channel 级 p2p 模式快照（与 linkPolicy.p2pMode 保持一致）
+   */
+  p2pMode?: TunnelP2PMode
   /** edge 侧分配的物理 channel ID */
   channelId?: string
   /** 扩展元数据 */
@@ -674,7 +682,7 @@ export interface Tunnel {
 }
 
 // ============================================================================
-// 扩展运行时通道 SDK 契约（Host API v1）
+// 扩展运行时通道 SDK 契约（Host API）
 // ============================================================================
 
 /**
@@ -688,91 +696,143 @@ export interface HostResult<T> {
 }
 
 /**
- * 通道启动声明（扩展侧输入）
+ * Channel 协议类型（identity 级别）。
  *
- * 每个 ChannelStartSpec 对应一条真实传输链路，与运行态的 TunnelChannel 一一对应。
- * tcp/5900 和 udp/5900 应声明为两个独立的 ChannelStartSpec。
+ * 说明：
+ * 1. P2P 数据面当前仅对 tcp/udp 生效。
+ * 2. HTTP/HTTPS App 仍通过同一 host.channel API 走 relay 启停流程，
+ *    因此 identity 需要允许声明 http/https。
+ */
+export type P2PChannelProtocol = 'tcp' | 'udp' | 'http' | 'https'
+
+/**
+ * 通道路径类型（会话聚合输出语义）。
+ */
+export type ChannelPathKind = 'relay' | 'direct' | 'mixed' | 'unknown'
+
+/**
+ * 通道身份（逻辑主键 + 作用域主键 + 运行时物理 ID）。
+ */
+export interface ChannelIdentity {
+  /** 作用域主键（推荐 edgeId:tunnelId） */
+  tunnelSelectorKey: string
+  /** 稳定逻辑 key（配置级主键） */
+  channelKey: string
+  /** 运行时物理 channelId（可变，多值用于重建映射） */
+  runtimeChannelIds?: string[]
+  protocol: P2PChannelProtocol
+  role: TunnelParticipantRole
+}
+
+/**
+ * 通道策略（显式策略字段，减少 metadata 推断）。
+ */
+export interface ChannelPolicy {
+  p2pMode: TunnelP2PMode
+  preferred: ChannelLinkType[]
+  allowRelayFallback: boolean
+  requireDirect: boolean
+}
+
+/**
+ * 会话计划（session 维度输入）。
+ */
+export interface SessionPlan {
+  sessionKey: string
+  actorDeviceId: string
+  actorRole: TunnelParticipantRole
+  channelKeys: string[]
+  policy: {
+    mode: TunnelP2PMode
+    allowRelayFallback: boolean
+  }
+}
+
+/**
+ * 通道启动声明（扩展侧输入）。
+ *
+ * 每个 ChannelStartSpec 对应一条真实传输链路（按 identity 唯一识别）。
  */
 export interface ChannelStartSpec {
-  key: string
-  protocol: ChannelProtocol
-  localHost?: string
-  localPort: number
-  remotePort?: number
-  subdomain?: string
+  identity: ChannelIdentity
+  required?: boolean
+  local: {
+    host: string
+    port: number
+  }
+  remote?: {
+    host?: string
+    port?: number
+  }
   aliasDomain?: string
+  subdomain?: string
   bufferSize?: number
-  transport?: ChannelLinkType
+  policy: ChannelPolicy
   metadata?: ChannelForwardMetadata
 }
 
 /**
- * 启动多通道输入参数
+ * 启动多通道输入参数（session + channels）。
  */
 export interface StartChannelsInput {
+  session: SessionPlan
   channels: ChannelStartSpec[]
   reconnect?: boolean
   mode?: 'all-or-nothing' | 'best-effort'
-  actorDeviceId?: string
-  actorRole?: TunnelParticipantRole
-  sessionId?: string
 }
 
 /**
- * 加入协商输入参数（consumer/controller）
+ * 加入协商输入参数（consumer/controller）。
  */
-export interface JoinChannelsInput {
-  channels: ChannelStartSpec[]
-  reconnect?: boolean
-  mode?: 'all-or-nothing' | 'best-effort'
-  actorDeviceId?: string
-  actorRole?: TunnelParticipantRole
-  sessionId?: string
-}
+export interface JoinChannelsInput extends StartChannelsInput {}
 
 /**
- * 停止通道输入参数
+ * 停止通道输入参数。
  */
 export interface StopChannelsInput {
-  keys?: string[]
+  sessionKey?: string
+  channelKeys?: string[]
   reason?: string
-  actorDeviceId?: string
-  actorRole?: TunnelParticipantRole
-  sessionId?: string
+  actorDeviceId: string
+  actorRole: TunnelParticipantRole
 }
 
 /**
- * 离开协商输入参数（session-local）
+ * 离开协商输入参数（session-local）。
  */
 export interface LeaveChannelsInput {
-  keys?: string[]
+  sessionKey?: string
+  channelKeys?: string[]
   reason?: string
-  actorDeviceId?: string
-  actorRole?: TunnelParticipantRole
-  sessionId?: string
+  actorDeviceId: string
+  actorRole: TunnelParticipantRole
 }
 
 /**
- * 上报 QUIC 连通性结果输入参数（按 channel）
+ * 上报 QUIC 连通性结果输入参数（按 channelKey）。
  */
 export interface ReportQuicConnectivityInput {
-  channelId: string
+  tunnelSelectorKey: string
+  channelKey: string
+  runtimeChannelId?: string
   directAvailable: boolean
   directError?: string
 }
 
 /**
- * 上报 QUIC client-info 输入参数（按 channel）
+ * 上报 QUIC client-info 输入参数（按 channelKey）。
  */
 export interface ReportQuicClientInfoInput {
-  channelId: string
+  tunnelSelectorKey: string
+  channelKey: string
+  runtimeChannelId?: string
   clientId: string
   natType?: number
   publicAddr?: string
 }
 
 /**
- * 通道运行时 SDK（扩展可调用）
+ * 通道运行时 SDK（扩展可调用）。
  */
 export interface ExtensionChannelRuntimeApi {
   startChannels(input: StartChannelsInput): Promise<HostResult<Tunnel>>
@@ -786,10 +846,10 @@ export interface ExtensionChannelRuntimeApi {
 }
 
 /**
- * 宿主注入给扩展的 API 入口
+ * 宿主注入给扩展的 API 入口。
  */
 export interface ExtensionHostApi {
-  version: '1'
+  version: '2'
   channel: ExtensionChannelRuntimeApi
 }
 
@@ -839,7 +899,7 @@ export interface AppHookContext {
   tunnel: Tunnel
   /** 当前关联 Edge 信息（可选，供地址/状态推导） */
   edge?: Record<string, any> | null
-  /** 宿主提供的受限 API（可选，为兼容旧扩展） */
+  /** 宿主提供的受限 API（可选） */
   host?: ExtensionHostApi
   /** 触发事件（可选，用于通知宿主） */
   emit?: (event: string, ...args: any[]) => void
@@ -1053,6 +1113,11 @@ export interface AppDefinition {
    */
   requiredProtocols?: ChannelProtocol[]
   /**
+   * 多通道清单（可选）。
+   * 说明：用于声明 app 的 channel 拓扑与角色，避免在运行时代码中硬编码组合关系。
+   */
+  channelManifest?: ChannelStartSpec[]
+  /**
    * 声明 App 配置中承载「自定义域名（alias domain）」的字段 key。
    *
    * 核心设计原则：自定义域名是 Tunnel 实例的运行时属性，不由 App 类型决定是否必填。
@@ -1105,8 +1170,8 @@ export interface ExtensionMetadata {
   minHostVersion?: string
   /** 依赖的其他扩展 */
   dependencies?: Record<string, string>
-  /** 扩展使用的 Host API 版本，默认可视为 v1 */
-  hostApiVersion?: '1'
+  /** 扩展使用的 Host API 版本 */
+  hostApiVersion?: '2'
 }
 
 /**
