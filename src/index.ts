@@ -691,8 +691,13 @@ export interface Tunnel {
 export interface HostResult<T> {
   success: boolean
   data?: T
+  /** 结果文本：失败原因 / 部分成功说明（人类可读，日志与兜底展示用） */
   message?: string
-  error?: string
+  /**
+   * 后端结构化错误码（对应 api/schema/message.fbs enum ErrorCode）。
+   * 供上层做 errorCode→i18n 统一映射，避免透传后端英文原文或文字匹配。
+   */
+  errorCode?: number
 }
 
 /**
@@ -809,29 +814,6 @@ export interface LeaveChannelsInput {
 }
 
 /**
- * 上报 QUIC 连通性结果输入参数（按 channelKey）。
- */
-export interface ReportQuicConnectivityInput {
-  tunnelSelectorKey: string
-  channelKey: string
-  runtimeChannelId?: string
-  directAvailable: boolean
-  directError?: string
-}
-
-/**
- * 上报 QUIC client-info 输入参数（按 channelKey）。
- */
-export interface ReportQuicClientInfoInput {
-  tunnelSelectorKey: string
-  channelKey: string
-  runtimeChannelId?: string
-  clientId: string
-  natType?: number
-  publicAddr?: string
-}
-
-/**
  * 通道运行时 SDK（扩展可调用）。
  */
 export interface ExtensionChannelRuntimeApi {
@@ -841,8 +823,6 @@ export interface ExtensionChannelRuntimeApi {
   leaveChannels(input?: LeaveChannelsInput): Promise<HostResult<Tunnel>>
   getTunnel(): Promise<HostResult<Tunnel>>
   isEdgeConnected(): Promise<HostResult<boolean>>
-  reportQuicConnectivityOutcomeByChannel?(input: ReportQuicConnectivityInput): Promise<HostResult<void>>
-  reportQuicClientInfoByChannel?(input: ReportQuicClientInfoInput): Promise<HostResult<void>>
 }
 
 /**
@@ -937,7 +917,31 @@ export interface AppActionResult {
   message?: string
   /** 额外数据 */
   data?: any
+  /**
+   * 后端结构化错误码（对应 api/schema/message.fbs enum ErrorCode）。
+   * 失败时由 App 从 HostResult 透传，供编排层统一做 errorCode→i18n 映射。
+   */
+  errorCode?: number
 }
+
+/**
+ * 后端隧道操作错误码（单一事实来源，对应 api/schema/message.fbs enum ErrorCode）。
+ */
+export const TunnelErrorCode = {
+  UNKNOWN: 0,
+  AUTH_FAILED: 1001,
+  INVALID_MESSAGE: 1002,
+  CHANNEL_NOT_FOUND: 2001,
+  TUNNEL_LIMIT_EXCEEDED: 2002,
+  /** 隧道未启用可用的主动 P2P 协商（发布端未就绪） */
+  P2P_NOT_ENABLED: 2003,
+  TIMEOUT: 3001,
+  EDGE_OFFLINE: 3002,
+  INTERNAL_ERROR: 9999,
+} as const
+
+export type TunnelErrorCode =
+  (typeof TunnelErrorCode)[keyof typeof TunnelErrorCode]
 
 /**
  * 标签页定义
@@ -1009,6 +1013,17 @@ export interface AppHooks {
   
   /** 主题切换钩子 */
   onThemeChange?: (isDark: boolean, themeMode: 'light' | 'dark' | 'system', context: AppHookContext) => void | Promise<void>
+
+  /**
+   * 加入协商失败错误处理钩子（可选）。
+   * 接收后端结构化 errorCode：返回非空文案则采用（App/扩展自定义处理）；
+   * 返回空字符串 / undefined 则回退到宿主统一的 errorCode→i18n 方案。
+   */
+  onJoinError?: (
+    context: AppHookContext,
+    errorCode: number,
+    rawMessage?: string
+  ) => string | undefined | Promise<string | undefined>
   
   /** 自定义操作钩子（可扩展） */
   [key: string]: ((...args: any[]) => any) | undefined
