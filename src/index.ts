@@ -698,6 +698,11 @@ export interface HostResult<T> {
    * 供上层做 errorCode→i18n 统一映射，避免透传后端英文原文或文字匹配。
    */
   errorCode?: number
+  /**
+   * 统一 agent 错误字符串码（E_* 本地 IPC 码或 fbs 枚举名）。
+   * 与 errorCode 并行透传，供上层用 localizeAgentError 统一本地化。
+   */
+  errorKind?: string
 }
 
 /**
@@ -922,6 +927,11 @@ export interface AppActionResult {
    * 失败时由 App 从 HostResult 透传，供编排层统一做 errorCode→i18n 映射。
    */
   errorCode?: number
+  /**
+   * 统一 agent 错误字符串码（E_* 本地 IPC 码或 fbs 枚举名）。
+   * 与 errorCode 并行透传，供编排层用 localizeAgentError 统一本地化。
+   */
+  errorKind?: string
 }
 
 /**
