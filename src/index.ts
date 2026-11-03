@@ -198,9 +198,9 @@ export interface DNS01Challenge {
 
 /**
  * 统一域名运行态记录类型
- * 0=UNKNOWN, 1=CNAME, 2=TXT
+ * 0=UNKNOWN, 1=CNAME, 2=TXT, 3=A, 4=AAAA
  */
-export type DomainRuntimeRecordType = 0 | 1 | 2
+export type DomainRuntimeRecordType = 0 | 1 | 2 | 3 | 4
 
 /**
  * 统一域名运行态记录（可直接用于 UI 配置引导）
